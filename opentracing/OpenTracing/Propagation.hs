@@ -117,10 +117,11 @@ carrier
     => proxy c -- ^ Proxy for the carrier type @c@.
     -> r -- ^ The application context
     -> Prism' c SpanContext
-carrier c =
 #if MIN_VERSION_vinyl(0,9,0)
+carrier _c =
   fromCarrier . view (propagation . rlens)
 #else
+carrier c =
   fromCarrier . view (propagation . rlens c)
 #endif
 
