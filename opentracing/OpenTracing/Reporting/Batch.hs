@@ -80,33 +80,42 @@ makeLenses ''BatchOptions
 
 -- | The environment of a batch reporter.
 data BatchEnv = BatchEnv
-    { envQ   :: TQueue FinishedSpan
+    { envHalt :: TVar Bool
+    -- ^ Signal to halt consumer
+    , envQ    :: TQueue FinishedSpan
     -- ^ The queue of spans to be reported
-    , envRep :: Async ()
+    , envRep  :: Async ()
     -- ^ Asynchronous consumer of the queue
     }
 
 -- | Create a new batch environment
 newBatchEnv :: BatchOptions -> IO BatchEnv
 newBatchEnv opt = do
+    h <- newTVarIO False
     q <- newTQueueIO
-    BatchEnv q <$> consumer opt q
+    BatchEnv h q <$> consumer opt h q
 
--- | Close a batch reporter, stop consuming any new spans. Any
--- spans in the queue will be drained.
+-- | Close a batch reporter, stop consuming any new spans. Signals shutdown
+-- so that consumer can die gracefully.
 closeBatchEnv :: BatchEnv -> IO ()
-closeBatchEnv = cancel . envRep
+closeBatchEnv BatchEnv{envHalt, envRep} = do
+  atomically $ writeTVar envHalt True
+  wait envRep
 
 -- | An implementation of `OpenTracing.Tracer.tracerReport` that batches the finished
 -- spans for transimission to their destination.
 batchReporter :: MonadIO m => BatchEnv -> FinishedSpan -> m ()
 batchReporter BatchEnv{envQ} = liftIO . atomically . writeTQueue envQ
 
-consumer :: BatchOptions -> TQueue FinishedSpan -> IO (Async ())
-consumer opt@BatchOptions{..} q = async . forever $ do
+consumer :: BatchOptions -> TVar Bool -> TQueue FinishedSpan -> IO (Async ())
+consumer opt@BatchOptions{..} h q = async . untilHalt $ do
     xs <- popBlocking
     go False xs
   where
+    untilHalt action = do
+      shouldHalt <- readTVarIO h
+      if shouldHalt then pure () else action
+
     popBlocking = atomically $ do
         x <- readTQueue q
         (x:) <$> pop (_boptBatchSize - 1) q
