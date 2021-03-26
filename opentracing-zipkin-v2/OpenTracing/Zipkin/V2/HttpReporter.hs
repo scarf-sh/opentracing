@@ -12,7 +12,7 @@ module OpenTracing.Zipkin.V2.HttpReporter
     , zipkinOptions
     , zoManager
     , zoLocalEndpoint
-    , zoAddr
+    , zoPushEndpoint
     , zoLogfmt
     , zoErrorLog
 
@@ -43,8 +43,9 @@ import           Data.ByteString.Builder
 import           Data.Map.Lens               (toMapOf)
 import           Data.Maybe                  (catMaybes)
 import           Data.Monoid
+import           Data.Text                   (Text)
 import           Data.Text.Lazy.Encoding     (decodeUtf8)
-import           Data.Text.Strict.Lens       (packed, utf8)
+import           Data.Text.Strict.Lens       (unpacked, packed, utf8)
 import           Network.HTTP.Client
 import           Network.HTTP.Types
 import           OpenTracing.Log
@@ -60,7 +61,7 @@ newtype Zipkin = Zipkin { fromZipkin :: BatchEnv }
 data ZipkinOptions = ZipkinOptions
     { _zoManager       :: Manager
     , _zoLocalEndpoint :: Endpoint
-    , _zoAddr          :: Addr 'HTTP
+    , _zoPushEndpoint  :: Text
     , _zoLogfmt        :: forall t. Foldable t => t LogField -> Builder -- == LogFieldsFormatter
     , _zoErrorLog      :: Builder -> IO ()
     }
@@ -71,13 +72,13 @@ zipkinOptions :: Manager -> Endpoint -> ZipkinOptions
 zipkinOptions mgr loc = ZipkinOptions
     { _zoManager       = mgr
     , _zoLocalEndpoint = loc
-    , _zoAddr          = defaultZipkinAddr
+    , _zoPushEndpoint  = "http://127.0.0.1:9411/api/v2/spans"
     , _zoLogfmt        = jsonMap
     , _zoErrorLog      = defaultErrorLog
     }
 
 newZipkin :: ZipkinOptions -> IO Zipkin
-newZipkin opts@ZipkinOptions{_zoErrorLog=errlog} = do
+newZipkin opts@ZipkinOptions{_zoPushEndpoint=push, _zoErrorLog=errlog} = do
     rq <- mkReq
     fmap Zipkin
         . newBatchEnv
@@ -85,18 +86,10 @@ newZipkin opts@ZipkinOptions{_zoErrorLog=errlog} = do
         $ reporter opts rq
   where
     mkReq = do
-        rq <- parseRequest rqBase
+        rq <- parseRequest (push ^. unpacked)
         return rq
             { requestHeaders = [(hContentType, "application/json")]
-            , secure         = view (zoAddr . addrSecure) opts
             }
-
-    rqBase =
-           "POST http://"
-        <> view (zoAddr . addrHostName) opts
-        <> ":"
-        <> show (view (zoAddr . addrPort) opts)
-        <> "/api/v2/spans"
 
 closeZipkin :: Zipkin -> IO ()
 closeZipkin = closeBatchEnv . fromZipkin
