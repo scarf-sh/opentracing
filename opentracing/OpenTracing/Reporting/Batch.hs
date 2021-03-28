@@ -114,7 +114,7 @@ consumer opt@BatchOptions{..} h q = async . untilHalt $ do
   where
     untilHalt action = do
       shouldHalt <- readTVarIO h
-      if shouldHalt then pure () else action
+      if shouldHalt then pure () else action >> untilHalt action
 
     popBlocking = atomically $ do
         x <- readTQueue q
