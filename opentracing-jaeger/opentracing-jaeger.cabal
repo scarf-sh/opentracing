@@ -27,9 +27,15 @@ library
       OpenTracing.Jaeger.Propagation
       OpenTracing.Jaeger.Thrift
   other-modules:
+      Agent.Client
+      Agent.Server
+      Agent.Types
       Jaeger.Client
       Jaeger.Server
       Jaeger.Types
+      Zipkincore.Types
+      Zipkincore.Server
+      Zipkincore.Types
   hs-source-dirs:
       src
       gen-src
