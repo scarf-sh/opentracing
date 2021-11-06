@@ -7,3 +7,6 @@ packages:
   opentracing-zipkin-common
   opentracing-zipkin-v1
   opentracing-zipkin-v2
+
+allow-newer: all:aeson
+constraints: aeson >=2.0.1.0 && <2.1
